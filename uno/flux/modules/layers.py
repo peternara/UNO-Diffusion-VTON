@@ -23,20 +23,40 @@ from torch import Tensor, nn
 from ..math import attention, rope
 import torch.nn.functional as F
 
+# ---------------------------------------------------------------------------------------
+# 패치나 토큰의 위치(좌표) 정보를, 신경망에서 쓸 수 있는 벡터(임베딩)로 바꿔주는 역할
+#     → 그중에서도 이미지 패치처럼 2차원/3차원 위치 정보를 ‘RoPE’ 방식(고급 sinusoidal)으로 각각 임베딩하고,
+#     → 이것을 하나로 합쳐줍니다.
+# 위치를 벡터로 전환
+# 예)
+#     → 이미지 패치의 좌표를 임베딩할 때, 즉, 한 이미지 패치의 위치: (row=3, col=7)이라면,
+#     → row좌표 3, col좌표 7을 받아, row용 임베딩, col용 임베딩을 각각 만듦 (Sin/Cos) < RoPE 
+#     → 두 벡터를 연결해서 최종 positional embedding 
+# ---------------------------------------------------------------------------------------
+
 class EmbedND(nn.Module):
     def __init__(self, dim: int, theta: int, axes_dim: list[int]):
         super().__init__()
-        self.dim = dim
-        self.theta = theta
-        self.axes_dim = axes_dim
+        self.dim      = dim       # head당 positional embedding 차원
+        self.theta    = theta     # RoPE의 주기 조절 파라미터
+        self.axes_dim = axes_dim  # 각 축별 positional embedding 차원
 
     def forward(self, ids: Tensor) -> Tensor:
-        n_axes = ids.shape[-1]
-        emb = torch.cat(
-            [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
-            dim=-3,
-        )
+        # ids: (..., n_axes)  ← n_axes는 보통 2 또는 3 (ex: [row, col], 또는 [dummy, row, col] 등)
 
+        n_axes = ids.shape[-1]
+
+        #
+        # rope(ids[..., i], self.axes_dim[i], self.theta): (..., axes_dim[i])  
+        #     → n_axes번 for문: 각 축별로 positional embedding 생성 (예: row/col/dummy 각각)
+        #     → 결과: [ (..., axes_dim[0]), (..., axes_dim[1]), ... ]  
+        # torch.cat(dim=-3): 마지막에서 3번째 축(= 시퀀스/패치 방향)에서 concat  
+        # (실제 (..., axes_dim[0]+axes_dim[1]+...)로 연결)
+        emb    = torch.cat(
+                [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
+                dim=-3,
+                )
+    
         return emb.unsqueeze(1)
 
 # ---------------------------------------------------------------------------------------
