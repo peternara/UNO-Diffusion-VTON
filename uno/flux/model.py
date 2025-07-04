@@ -175,7 +175,11 @@ class Flux(nn.Module):
         # running on sequences img
         # 이미지 입력: Linear(in_channels → hidden_size)
         img = self.img_in(img) # (B, N_img_patch, hidden_size)    
-        
+
+        # "현재 노이즈 단계(timestep)가 몇 번째인지" → 이를 신경망에서 쓸 수 있는 임베딩 벡터로 변환
+        #        → 모델에 "지금 얼마나 노이즈가 섞였는지" 알려주는 컨디션 벡터
+        #        → 네트워크의 조건(condition) 입력으로 들어감
+        #        → (ex: MLP/Linear를 통과해서 cross attention 등에서 사용)
         # timestep(scalar) → 256차원 임베딩 → hidden_size로 투영
         #        → timestep_embedding() : 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
         vec = self.time_in(timestep_embedding(timesteps, 256)) # timestep_embedding(timesteps, 256): (B, 256) → time_in: (B, hidden_size)
