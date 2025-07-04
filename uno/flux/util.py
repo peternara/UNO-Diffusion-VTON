@@ -240,11 +240,13 @@ def load_flow_model(name: str, device: str | torch.device = "cuda", hf_download:
         and configs[name].repo_flow is not None
         and hf_download
     ):
-        ckpt_path = hf_hub_download(configs[name].repo_id, configs[name].repo_flow)
+        ckpt_path = hf_hub_download(configs[name].repo_id, configs[name].repo_flow) # huggingface hub에서 체크포인트 파일 다운로드
     
     with torch.device("meta" if ckpt_path is not None else device):
-        model = Flux(configs[name].params).to(torch.bfloat16)
-
+        # Flux 모델 인스턴스 생성 및 bfloat16으로 변환
+        #     → torch의 메타 디바이스(가중치 비할당, 메모리 없는 장치)에서 모델 인스턴스 생성
+        #     → 보통 "meta"에서 먼저 로딩 후, 실제로 로드 시 device로 옮기는 패턴
+        model = Flux(configs[name].params).to(torch.bfloat16) 
     if ckpt_path is not None:
         print("Loading checkpoint")
         # load_sft doesn't support torch.device
