@@ -46,27 +46,30 @@ class Flux(nn.Module):
     def __init__(self, params: FluxParams):
         super().__init__()
 
-        self.params = params
-        self.in_channels = params.in_channels
+        self.params       = params
+        self.in_channels  = params.in_channels
         self.out_channels = self.in_channels
-        if params.hidden_size % params.num_heads != 0:
+        
+        if params.hidden_size % params.num_heads != 0: # hidden_size가 num_heads로 나누어떨어지는지 체크
             raise ValueError(
                 f"Hidden size {params.hidden_size} must be divisible by num_heads {params.num_heads}"
             )
-        pe_dim = params.hidden_size // params.num_heads
-        if sum(params.axes_dim) != pe_dim:
+            
+        pe_dim = params.hidden_size // params.num_heads # 1-head 당 embedding 차원
+        if sum(params.axes_dim) != pe_dim:              # positional embedding 차원 검증
             raise ValueError(f"Got {params.axes_dim} but expected positional dim {pe_dim}")
-        self.hidden_size = params.hidden_size
-        self.num_heads = params.num_heads
-        self.pe_embedder = EmbedND(dim=pe_dim, theta=params.theta, axes_dim=params.axes_dim)
-        self.img_in = nn.Linear(self.in_channels, self.hidden_size, bias=True)
-        self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
-        self.vector_in = MLPEmbedder(params.vec_in_dim, self.hidden_size)
-        self.guidance_in = (
-            MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size) if params.guidance_embed else nn.Identity()
-        )
-        self.txt_in = nn.Linear(params.context_in_dim, self.hidden_size)
+            
+        self.hidden_size = params.hidden_size                                                # 전체 임베딩 차원
+        self.num_heads   = params.num_heads                                                  # multi-head attention 헤드 개수
+        self.pe_embedder = EmbedND(dim=pe_dim, theta=params.theta, axes_dim=params.axes_dim) # N차원 positional embedding 생성기
+        self.img_in      = nn.Linear(self.in_channels, self.hidden_size, bias=True)          # 이미지 입력을 hidden_size로 임베딩 (Linear layer)
+        self.time_in     = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)              # 타임스텝 입력(timestep/noise level)을 임베딩 (MLP)
+        self.vector_in   = MLPEmbedder(params.vec_in_dim, self.hidden_size)                  # 벡터 입력(예: CLIP 등)을 임베딩 (MLP)
+        self.guidance_in = (MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size) if params.guidance_embed else nn.Identity()) # guidance 인풋이 있을 때 MLP로 임베딩, 없으면 그대로 통과
+        self.txt_in      = nn.Linear(params.context_in_dim, self.hidden_size)                # 텍스트 임베딩 입력 (예: T5 등) → hidden_size로 투영
 
+        # DoubleStreamBlock(Transformer 계열 블록) 여러 개를 쌓음 (깊이 = params.depth)
+        #     → 보통 이미지 스트림/텍스트 스트림 등 두 개 정보를 동시에 처리
         self.double_blocks = nn.ModuleList(
             [
                 DoubleStreamBlock(
@@ -78,16 +81,20 @@ class Flux(nn.Module):
                 for _ in range(params.depth)
             ]
         )
-
+        
+        # SingleStreamBlock 블록 여러 개 
         self.single_blocks = nn.ModuleList(
             [
                 SingleStreamBlock(self.hidden_size, self.num_heads, mlp_ratio=params.mlp_ratio)
                 for _ in range(params.depth_single_blocks)
             ]
         )
+        
+        # 마지막 출력 레이어 (hidden → out_channels)
+        self.final_layer            = LastLayer(self.hidden_size, 1, self.out_channels)
 
-        self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels)
-        self.gradient_checkpointing = False
+        # gradient checkpointing(메모리 절약용 연산) 기능 사용 여부 (기본 False)
+        self.gradient_checkpointing = False 
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
