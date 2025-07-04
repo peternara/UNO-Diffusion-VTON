@@ -72,6 +72,7 @@ class Flux(nn.Module):
         #     → 보통 이미지 스트림/텍스트 스트림 등 두 개 정보를 동시에 처리
         self.double_blocks = nn.ModuleList(
             [
+                # 트랜스포머 계열 블록으로, 이미지/텍스트 스트림을 동시에 cross-attention 등으로 처리
                 DoubleStreamBlock(
                     self.hidden_size,
                     self.num_heads,
@@ -85,6 +86,7 @@ class Flux(nn.Module):
         # SingleStreamBlock 블록 여러 개 
         self.single_blocks = nn.ModuleList(
             [
+                # concat된 시퀀스를 한 번에 처리하는 추가 트랜스포머 블록
                 SingleStreamBlock(self.hidden_size, self.num_heads, mlp_ratio=params.mlp_ratio)
                 for _ in range(params.depth_single_blocks)
             ]
@@ -155,75 +157,113 @@ class Flux(nn.Module):
 
     def forward(
         self,
-        img: Tensor,
-        img_ids: Tensor,
-        txt: Tensor,
-        txt_ids: Tensor,
-        timesteps: Tensor,
-        y: Tensor,
-        guidance: Tensor | None = None,
-        ref_img: Tensor | None = None, 
-        ref_img_ids: Tensor | None = None, 
+        img: Tensor,                        # (B, N_patch, in_channels)   : 입력 이미지 패치 벡터
+        img_ids: Tensor,                    # (B, N_patch, pe_dim)        : 이미지 patch별 positional id
+        txt: Tensor,                        # (B, N_token, context_in_dim): 텍스트 임베딩
+        txt_ids: Tensor,                    # (B, N_token, pe_dim)        : 텍스트 토큰 positional id
+        timesteps: Tensor,                  # (B,)                        : diffusion timestep 값
+        y: Tensor,                          # (B, vec_in_dim)             : 텍스트 임베딩 등 condition 벡터
+        guidance: Tensor | None = None,     # (B,)                        : guidance strength 값
+        ref_img: Tensor | None = None,      # (B, N_patch, in_channels)   : 참조 이미지
+        ref_img_ids: Tensor | None = None,  # (B, N_patch, pe_dim)        : 참조 이미지 positional id
     ) -> Tensor:
+        
+        # 입력 이미지, 텍스트 shape 체크
         if img.ndim != 3 or txt.ndim != 3:
             raise ValueError("Input img and txt tensors must have 3 dimensions.")
 
         # running on sequences img
-        img = self.img_in(img)
-        vec = self.time_in(timestep_embedding(timesteps, 256))
+        # 이미지 입력: Linear(in_channels → hidden_size)
+        img = self.img_in(img) # (B, N_img_patch, hidden_size)    
+        
+        # timestep(scalar) → 256차원 임베딩 → hidden_size로 투영
+        vec = self.time_in(timestep_embedding(timesteps, 256)) # timestep_embedding(timesteps, 256): (B, 256) → time_in: (B, hidden_size)
+        
         if self.params.guidance_embed:
             if guidance is None:
                 raise ValueError("Didn't get guidance strength for guidance distilled model.")
-            vec = vec + self.guidance_in(timestep_embedding(guidance, 256))
-        vec = vec + self.vector_in(y)
-        txt = self.txt_in(txt)
+            # guidance 플래그가 있으면 guidance값도 임베딩해서 vec에 더함
+            vec = vec + self.guidance_in(timestep_embedding(guidance, 256)) # timestep_embedding(guidance, 256): (B, 256) → guidance_in: (B, hidden_size)
 
-        ids = torch.cat((txt_ids, img_ids), dim=1)
+        # CLIP 등 condition 벡터도 임베딩해서 더함 
+        vec = vec + self.vector_in(y) # vector_in(y): (B, hidden_size), broadcasting sum 
+        
+        # 텍스트 임베딩: Linear(context_in_dim → hidden_size)    
+        txt = self.txt_in(txt)        # (B, N_txt, hidden_size)         
+
+        # 텍스트 토큰 id와 이미지 패치 id를 시퀀스 차원에서 이어붙임
+        ids = torch.cat((txt_ids, img_ids), dim=1) # txt_ids: (B, N_txt, pe_dim), img_ids: (B, N_img_patch, pe_dim) → (B, N_txt + N_img_patch, pe_dim)
 
         # concat ref_img/img
-        img_end = img.shape[1]
+        img_end = img.shape[1] # 원본 img 패치 길이 저장
         if ref_img is not None:
             if isinstance(ref_img, tuple) or isinstance(ref_img, list):
-                img_in = [img] + [self.img_in(ref) for ref in ref_img]
+                # 여러 참조 이미지가 있을 때: 모두 임베딩 후 원본 img와 함께 concat
+                #
+                # img: (B, N_img_patch, hidden_size), 
+                # self.img_in(ref): (B, N_ref_patch_i, hidden_size)
+                img_in  = [img] + [self.img_in(ref) for ref in ref_img]
+                
+                # ids: (B, N_txt + N_img_patch, pe_dim)
+                # ref_ids: (B, N_ref_patch_i, pe_dim)
                 img_ids = [ids] + [ref_ids for ref_ids in ref_img_ids]
-                img = torch.cat(img_in, dim=1)  
-                ids = torch.cat(img_ids, dim=1)
+
+                # (B, N_txt + N_img_patch + ΣN_ref_patch, hidden_size)
+                img     = torch.cat(img_in, dim=1)  
+
+                # (B, N_txt + N_img_patch + ΣN_ref_patch, pe_dim)
+                ids     = torch.cat(img_ids, dim=1)
             else:
-                img = torch.cat((img, self.img_in(ref_img)), dim=1)  
-                ids = torch.cat((ids, ref_img_ids), dim=1)
-        pe = self.pe_embedder(ids)
+                # 참조 이미지 1개만 있을 때: img, ids에 이어붙임
+                img     = torch.cat((img, self.img_in(ref_img)), dim=1) # img: (B, N_img_patch, hidden_size), self.img_in(ref_img): (B, N_ref_patch, hidden_size) 
+                                                                        #         → (B, N_img_patch + N_ref_patch, hidden_size)
+                ids     = torch.cat((ids, ref_img_ids), dim=1)          # ids: (B, N_txt + N_img_patch, pe_dim), ref_img_ids: (B, N_ref_patch, pe_dim)
+                                                                        #         → (B, N_txt + N_img_patch + N_ref_patch, pe_dim)                
+        # positional embedding (입력된 id 기준)
+        pe = self.pe_embedder(ids) # (B, N_total_seq, hidden_size // num_heads), 내부적으로 expand됨
         
         for index_block, block in enumerate(self.double_blocks):
-            if self.training and self.gradient_checkpointing:
+            if self.training and self.gradient_checkpointing: # 메모리 절약을 위한 gradient checkpointing
                 img, txt = torch.utils.checkpoint.checkpoint(
                     block,
-                    img=img, 
-                    txt=txt, 
-                    vec=vec, 
-                    pe=pe, 
+                    img=img,             # (B, N_total_img, hidden_size)
+                    txt=txt,             # (B, N_txt, hidden_size) 
+                    vec=vec,             # (B, hidden_size) 
+                    pe=pe,               # (B, N_total_seq, pe_dim)  ※ 블록 내부적으로 맞게 reshape
                     use_reentrant=False,
                 )
-            else:
+            else: # DoubleStreamBlock 통과 (이미지/텍스트 동시 처리 트랜스포머) 
                 img, txt = block(
-                    img=img, 
-                    txt=txt, 
-                    vec=vec, 
-                    pe=pe
+                    img=img,             # (B, N_total_img, hidden_size)
+                    txt=txt,             # (B, N_txt, hidden_size)
+                    vec=vec,             # (B, hidden_size) 
+                    pe=pe                # (B, N_total_seq, pe_dim) 
                 )
 
-        img = torch.cat((txt, img), 1)
+        # txt와 img 시퀀스를 이어붙임 (텍스트→이미지)
+        img = torch.cat((txt, img), 1) # txt: (B, N_txt, hidden_size), img: (B, N_total_img, hidden_size)
+                                       #             → (B, N_txt + N_total_img, hidden_size)
+        
+        # SingleStreamBlock들 차례대로 통과 (1-stream 트랜스포머 계층)
         for block in self.single_blocks:
             if self.training and self.gradient_checkpointing:
                 img = torch.utils.checkpoint.checkpoint(
                     block,
-                    img, vec=vec, pe=pe,
+                    img,               # (B, N_txt + N_total_img, hidden_size)
+                    vec=vec,           # (B, hidden_size)
+                    pe=pe,             # (B, N_total_seq, pe_dim)
                     use_reentrant=False
                 )
             else:
-                img = block(img, vec=vec, pe=pe)
-        img = img[:, txt.shape[1] :, ...]
-        # index img
-        img = img[:, :img_end, ...]
+                img = block(img, vec=vec, pe=pe) # (B, N_txt + N_total_img, hidden_size)
 
-        img = self.final_layer(img, vec)  # (N, T, patch_size ** 2 * out_channels)
-        return img
+        # 텍스트 시퀀스 부분 제거, 이미지 부분만 남김
+        img = img[:, txt.shape[1] :, ...] # (B, N_total_img, hidden_size) - 텍스트 시퀀스 제외
+
+        # 참조 이미지 concat 후에도, 원본 img 패치 길이만큼 자름
+        # index img
+        img = img[:, :img_end, ...]       # (B, N_img_patch, hidden_size) - 오리지널 img 패치 부분만 선택
+
+        # 마지막 출력 레이어 통과 (hidden → patch별 예측값)
+        img = self.final_layer(img, vec)  # (B, N_img_patch, out_channels*patch_size**2) - 예측값(이미지/노이즈)
+        return img # 예측 결과 반환          # (B, N_img_patch, out_channels*patch_size**2)         
