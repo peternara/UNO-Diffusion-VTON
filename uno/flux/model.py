@@ -193,14 +193,15 @@ class Flux(nn.Module):
         txt = self.txt_in(txt)        # (B, N_txt, hidden_size)         
 
         # 텍스트 토큰 id와 이미지 패치 id를 시퀀스 차원에서 이어붙임
+        #        → paper 수식 4)
         ids = torch.cat((txt_ids, img_ids), dim=1) # txt_ids: (B, N_txt, pe_dim), img_ids: (B, N_img_patch, pe_dim) → (B, N_txt + N_img_patch, pe_dim)
 
         # concat ref_img/img
         img_end = img.shape[1] # 원본 img 패치 길이 저장
         if ref_img is not None:
             if isinstance(ref_img, tuple) or isinstance(ref_img, list):
-                # 여러 참조 이미지가 있을 때: 모두 임베딩 후 원본 img와 함께 concat
-                #
+                # i) 여러 참조 이미지가 있을 때: 모두 임베딩 후 원본 img와 함께 concat
+                #        → paper 수식 5)
                 # img: (B, N_img_patch, hidden_size), 
                 # self.img_in(ref): (B, N_ref_patch_i, hidden_size)
                 img_in  = [img] + [self.img_in(ref) for ref in ref_img]
@@ -215,7 +216,7 @@ class Flux(nn.Module):
                 # (B, N_txt + N_img_patch + ΣN_ref_patch, pe_dim)
                 ids     = torch.cat(img_ids, dim=1)
             else:
-                # 참조 이미지 1개만 있을 때: img, ids에 이어붙임
+                # ii) 참조 이미지 1개만 있을 때: img, ids에 이어붙임
                 img     = torch.cat((img, self.img_in(ref_img)), dim=1) # img: (B, N_img_patch, hidden_size), self.img_in(ref_img): (B, N_ref_patch, hidden_size) 
                                                                         #         → (B, N_img_patch + N_ref_patch, hidden_size)
                 ids     = torch.cat((ids, ref_img_ids), dim=1)          # ids: (B, N_txt + N_img_patch, pe_dim), ref_img_ids: (B, N_ref_patch, pe_dim)
@@ -242,6 +243,7 @@ class Flux(nn.Module):
                 )
 
         # txt와 img 시퀀스를 이어붙임 (텍스트→이미지)
+        #        → paper 수식 4)
         img = torch.cat((txt, img), 1) # txt: (B, N_txt, hidden_size), img: (B, N_total_img, hidden_size)
                                        #             → (B, N_txt + N_total_img, hidden_size)
         
