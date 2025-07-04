@@ -67,7 +67,6 @@ def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 10
     # 임베딩의 절반 차원 (cos, sin 각각 사용) 
     half  = dim // 2         # 절반 차원 (예: dim=256이면 half=128)
     
-    
     # sin/cos 에 들어가는 angle 구하기 = 각 배치별 t * 각 주파수
     #
     # (half,) - 각 주파수별 계수(exp scale factor) 
