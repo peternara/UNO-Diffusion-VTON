@@ -39,7 +39,13 @@ class EmbedND(nn.Module):
 
         return emb.unsqueeze(1)
 
-
+# ---------------------------------------------------------------------------------------
+# Diffusion/Transformer에서 사용되는 sinusoidal positional encoding (위치 임베딩)
+#     → 각 배치별 timestep(노이즈 단계)을 고유한 벡터로 변환
+#     → t가 0이면 첫 위치, t가 크면 점점 높은 주파수로 포지셔널 정보 제공
+#     → 이 임베딩은 네트워크에 timestep 정보를 넣을 때, 학습 가능한 임베딩 레이어 대신 사용
+# 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
+# ---------------------------------------------------------------------------------------
 def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 1000.0):
     """
     Create sinusoidal timestep embeddings.
@@ -47,21 +53,44 @@ def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 10
                       These may be fractional.
     :param dim: the dimension of the output.
     :param max_period: controls the minimum frequency of the embeddings.
-    :return: an (N, D) Tensor of positional embeddings.
+    :return: an (N, D) Tensor of positional embeddings. 
+    #
+    Sinusoidal timestep embedding 생성
+    :param t: (N,) 배치별 timestep 인덱스(실수 가능)
+    :param dim: 출력 임베딩 차원
+    :param max_period: 임베딩 주파수 범위 제어
+    :return: (N, dim) 형태의 임베딩 텐서 반환
     """
-    t = time_factor * t
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-        t.device
-    )
+    # (N,) - timestep 값에 스케일 적용, 
+    t     = time_factor * t  # (N,)  ← 각 배치별 timestep에 time_factor 곱함
+    
+    # 임베딩의 절반 차원 (cos, sin 각각 사용) 
+    half  = dim // 2         # 절반 차원 (예: dim=256이면 half=128)
+    
+    
+    # sin/cos 에 들어가는 angle 구하기 = 각 배치별 t * 각 주파수
+    #
+    # (half,) - 각 주파수별 계수(exp scale factor) 
+    #     → 각 주파수 : 각 차원의 주파수 값이 다름
+    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(t.device)
+    # (N, half) - 각 배치별 t * 각 주파수
+    #     → t[:, None]: (N, 1)
+    #     → freqs[None]: (1, half)
+    args  = t[:, None].float() * freqs[None] # (N, half) ← 각 배치의 t와 각 차원의 freq 곱
 
-    args = t[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    # (N, dim) - [cos 부분, sin 부분]으로 이어붙여 최종 임베딩 생성
+    #     → torch.cos(args): (N, half)
+    #     → torch.sin(args): (N, half)
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1) # concat 결과: (N, half*2) = (N, dim)  ← sin/cos 합치면 원하는 임베딩 차원 완성
+    
     if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+        # dim이 홀수면 마지막에 0 패딩 (shape 맞추기, (N, dim))
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1) # (N, dim+1) → 마지막 1개 0패딩 (dim이 홀수일 때만) > 결과적으로 (N, dim) 보장
+        
     if torch.is_floating_point(t):
+        # t가 float 타입이면 embedding도 동일 타입으로 변환
         embedding = embedding.to(t)
-    return embedding
+    return embedding # (N, dim)  ← 최종 결과, 배치별 timestep 임베딩
 
 
 class MLPEmbedder(nn.Module):
