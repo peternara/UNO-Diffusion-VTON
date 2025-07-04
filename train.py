@@ -363,10 +363,16 @@ def main(
         ref_imgs = batch["ref_imgs"]
 
         with torch.no_grad():
-            x_1 = vae.encode(img.to(accelerator.device).to(torch.float32))
+            x_1   = vae.encode(img.to(accelerator.device).to(torch.float32))
             x_ref = [vae.encode(ref_img.to(accelerator.device).to(torch.float32)) for ref_img in ref_imgs]
-            inp = prepare_multi_ip(t5=t5, clip=clip, img=x_1, prompt=prompts, ref_imgs=tuple(x_ref), pe=args.pe)
-            x_1 = rearrange(x_1, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
+            
+            # 메인 이미지와 참조 이미지들(ref_imgs)을 patch 단위로 분해
+            # 각 이미지 patch에 고유한 positional embedding ID(img_ids, ref_img_ids) 생성
+            # 텍스트 프롬프트를 두 임베더(t5, clip)로 임베딩
+            # 이 모든 정보를 dict로 묶어 downstream 모델 입력으로 준비
+            inp   = prepare_multi_ip(t5=t5, clip=clip, img=x_1, prompt=prompts, ref_imgs=tuple(x_ref), pe=args.pe)
+        
+            x_1   = rearrange(x_1, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
             x_ref = [rearrange(x, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for x in x_ref]
 
             bs = img.shape[0]
