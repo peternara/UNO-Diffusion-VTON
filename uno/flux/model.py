@@ -247,7 +247,6 @@ class Flux(nn.Module):
                 )
 
         # txt와 img 시퀀스를 이어붙임 (텍스트→이미지)
-        #        → paper 수식 4)
         img = torch.cat((txt, img), 1) # txt: (B, N_txt, hidden_size), img: (B, N_total_img, hidden_size)
                                        #             → (B, N_txt + N_total_img, hidden_size)
         
