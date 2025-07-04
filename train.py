@@ -365,21 +365,52 @@ def main(
         with torch.no_grad():
             x_1   = vae.encode(img.to(accelerator.device).to(torch.float32))
             x_ref = [vae.encode(ref_img.to(accelerator.device).to(torch.float32)) for ref_img in ref_imgs]
-            
-            # 메인 이미지와 참조 이미지들(ref_imgs)을 patch 단위로 분해
-            # 각 이미지 patch에 고유한 positional embedding ID(img_ids, ref_img_ids) 생성
-            # 텍스트 프롬프트를 두 임베더(t5, clip)로 임베딩
-            # 이 모든 정보를 dict로 묶어 downstream 모델 입력으로 준비
+
+            # What?
+            #    → 메인 이미지와 참조 이미지들(ref_imgs)을 patch 단위로 분해
+            #    → 각 이미지 patch에 고유한 positional embedding ID(img_ids, ref_img_ids) 생성
+            #    → 텍스트 프롬프트를 두 임베더(t5, clip)로 임베딩
+            #    → 이 모든 정보를 dict로 묶어 downstream 모델 입력으로 준비
             inp   = prepare_multi_ip(t5=t5, clip=clip, img=x_1, prompt=prompts, ref_imgs=tuple(x_ref), pe=args.pe)
-        
-            x_1   = rearrange(x_1, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
+
+            # 입력 이미지 (B, C, H, W) > (B, H//2 * W//2, C*2*2)
+            #    → 이미지를 2x2 패치 단위로 분해하여, 각 패치를 하나의 벡터(길이 C*4)
+            #    → 결과적으로 (배치, 패치 개수, 패치 채널)  
+            x_1   = rearrange(x_1, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)      
+            # 참조 이미지 리스트(각각 (B, C, H, W) 형태)의 각 이미지를 위와 동일하게 2x2 패치 단위로 분해
+            #    → 리스트 내 모든 참조 이미지를 (B, H//2 * W//2, C*2*2) 분해
             x_ref = [rearrange(x, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for x in x_ref]
 
-            bs = img.shape[0]
-            t = torch.randint(0, 1000, (bs,), device=accelerator.device)
-            t = timesteps[t]
-            x_0 = torch.randn_like(x_1, device=accelerator.device)
-            x_t = (1 - t[:, None, None]) * x_1 + t[:, None, None] * x_0
+            # What?
+            # 각 배치에 대해 무작위 타임스텝을 정해서,
+            # 해당 타임스텝만큼 "노이즈"가 섞인 이미지를 x_t로 생성.
+            # (이 때 원본 이미지 x_1과 노이즈 x_0을 혼합함)
+            # diffusion 네트워크의 입력이 되는 x_t와, 각종 conditioning 정보를 준비
+            bs           = img.shape[0]
+
+            # (0~999) 사이에서 배치별로 무작위 타임스텝(timestep) 인덱스를 생성.
+            #    → 즉, 각 이미지가 'diffusion 과정 중 몇 번째 단계'에 해당할지 랜덤하게 결정.
+            #    → Diffusion 모델에서는 다양한 타임스텝을 골고루 학습시키기 위해 랜덤 추출.
+            t            = torch.randint(0, 1000, (bs,), device=accelerator.device)
+            # 위에서 뽑은 인덱스를 실제 timestep 값(timesteps 텐서에서 해당 값)으로 변환.
+            #    → 보통 timesteps는 [0, 1] 구간의 값들을 쭉 담고 있는 텐서.
+            #    → 예: linspace(0, 1, 1000)와 동일
+            #    → 즉, t는 각 배치마다 0.0~1.0 사이의 연속적 노이즈 비율 값으로 생성
+            t            = timesteps[t]
+            # x_1과 같은 크기(shape)의 랜덤 노이즈 이미지를 생성. (완전 랜덤 노이즈) > backword pass > 노이즈 제거 과정
+            #    → Diffusion 모델의 핵심은 노이즈를 추가하거나 제거하는 것이므로, 노이즈 샘플이 필요.
+            x_0          = torch.randn_like(x_1, device=accelerator.device)
+            # x_1(원본)과 x_0(노이즈)를 타임스텝 비율만큼 섞어서 x_t를 생성하는 역할.
+            #    → t=0이면 x_t는 x_1(원본 이미지)
+            #    → t=1이면 x_t는 x_0(완전 노이즈)
+            #    → 그 사이 값이면 점진적으로 노이즈가 섞인 이미지
+            #    → 즉, diffusion training에서 '특정 단계의 noisy image'를 시뮬레이션.
+            #    → 이 x_t를 네트워크에 입력해서, 원본(x_1)이나 노이즈(x_0)를 예측하게 만듭니다.
+            x_t          = (1 - t[:, None, None]) * x_1 + t[:, None, None] * x_0
+            # guidance_vec는 모두 1로 채워진 벡터(배치 크기만큼).
+            #    → diffusion 모델에서 '조건부 샘플링'(예: classifier-free guidance) 할 때
+            #        → "1"이면 conditioning을 적용하라는 신호.
+            #        → (이 값이 0이면 unconditional, 1이면 conditional)
             guidance_vec = torch.full((x_t.shape[0],), 1, device=x_t.device, dtype=x_t.dtype)
         
         with accelerator.accumulate(dit):
