@@ -176,7 +176,7 @@ def prepare_multi_ip(
         prompt = [prompt]        
     txt = t5(prompt)                                 # t5 임베더로 텍스트 임베딩    
     if txt.shape[0] == 1 and bs > 1:                 # 임베딩 배치가 1이고 실제 bs > 1이면 > 복제
-        txt = repeat(txt, "1 ... -> bs ...", bs=bs)  #     > 복제
+        txt = repeat(txt, "1 ... -> bs ...", bs=bs)  #     → 복제
     txt_ids = torch.zeros(bs, txt.shape[1], 3)       # 텍스트 토큰별 positional id (dummy)
 
     vec = clip(prompt)                               # clip 임베더로 텍스트 임베딩
