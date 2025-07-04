@@ -61,7 +61,7 @@ class Flux(nn.Module):
             
         self.hidden_size = params.hidden_size                                                # 전체 임베딩 차원
         self.num_heads   = params.num_heads                                                  # multi-head attention 헤드 개수
-        self.pe_embedder = EmbedND(dim=pe_dim, theta=params.theta, axes_dim=params.axes_dim) # N차원 positional embedding 생성기
+        self.pe_embedder = EmbedND(dim=pe_dim, theta=params.theta, axes_dim=params.axes_dim) # N차원 positional embedding (patch 위치, 토큰 위치 등)
         self.img_in      = nn.Linear(self.in_channels, self.hidden_size, bias=True)          # 이미지 입력을 hidden_size로 임베딩 (Linear layer)
         self.time_in     = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)              # 타임스텝 입력(timestep/noise level)을 임베딩 (MLP)
         self.vector_in   = MLPEmbedder(params.vec_in_dim, self.hidden_size)                  # 벡터 입력(예: CLIP 등)을 임베딩 (MLP)
