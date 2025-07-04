@@ -225,7 +225,7 @@ class Flux(nn.Module):
                                                                         #         → (B, N_img_patch + N_ref_patch, hidden_size)
                 ids     = torch.cat((ids, ref_img_ids), dim=1)          # ids: (B, N_txt + N_img_patch, pe_dim), ref_img_ids: (B, N_ref_patch, pe_dim)
                                                                         #         → (B, N_txt + N_img_patch + N_ref_patch, pe_dim)                
-        # positional embedding (입력된 id 기준)
+        # RoPE : positional embedding (입력된 id 기준)   
         pe = self.pe_embedder(ids) # (B, N_total_seq, hidden_size // num_heads), 내부적으로 expand됨
         
         for index_block, block in enumerate(self.double_blocks):
