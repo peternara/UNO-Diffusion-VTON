@@ -111,68 +111,80 @@ def prepare(
         }
 
 def prepare_multi_ip(
-    t5: HFEmbedder,
-    clip: HFEmbedder,
-    img: Tensor,
-    prompt: str | list[str],
-    ref_imgs: list[Tensor] | None = None,
-    pe: Literal['d', 'h', 'w', 'o'] = 'd'
+    t5: HFEmbedder,                       # 텍스트 임베딩용, 예) T5 모델
+    clip: HFEmbedder,                     # 텍스트 임베딩용, 예) CLIP 모델
+    img: Tensor,                          # 입력 이미지 (B, C, H, W)
+    prompt: str | list[str],              # 텍스트 프롬프트 (str 혹은 str 리스트)
+    ref_imgs: list[Tensor] | None = None, # 참조 이미지들 (각각 (B, C, H, W)), 기본값 None
+    pe: Literal['d', 'h', 'w', 'o'] = 'd' # positional embedding ID 할당 방식 (default 'd')
 ) -> dict[str, Tensor]:
+    #
     assert pe in ['d', 'h', 'w', 'o']
     bs, c, h, w = img.shape
+    
+    # 만약 이미지 배치가 1인데 prompt가 리스트(여러 개)라면, 배치 사이즈를 prompt 길이로 설정 (프롬프트 수만큼 이미지 복제 예상)
     if bs == 1 and not isinstance(prompt, str):
         bs = len(prompt)
 
+    # 1. 입력 이미지 처리 및 ID 생성
+    # 이미지를 2x2 patch 단위로 분해 → shape: (B, H//2 * W//2, C22)
     img = rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
-    if img.shape[0] == 1 and bs > 1:
+    if img.shape[0] == 1 and bs > 1: # 이미지 배치가 1이고 실제 배치가 여러개면
+        # 만약 배치가 1이고, bs > 1이면 이미지를 bs개로 복제
         img = repeat(img, "1 ... -> bs ...", bs=bs)
 
-    img_ids = torch.zeros(h // 2, w // 2, 3)
-    img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None]
-    img_ids[..., 2] = img_ids[..., 2] + torch.arange(w // 2)[None, :]
-    img_ids = repeat(img_ids, "h w c -> b (h w) c", b=bs)
+    # 메인 이미지 patch별 positional embedding ID 생성
+    img_ids         = torch.zeros(h // 2, w // 2, 3)                  # 패치별 positional embedding id 초기화 (H/2, W/2, 3)
+    # row, col에 각 patch의 좌표를 기록
+    img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None] # 두 번째 축에 row 인덱스 할당
+    img_ids[..., 2] = img_ids[..., 2] + torch.arange(w // 2)[None, :] # 세 번째 축에 col 인덱스 할당
+    img_ids         = repeat(img_ids, "h w c -> b (h w) c", b=bs)     # shape을 (B, H/2*W/2(패치수), 3)으로 복제
 
-    ref_img_ids = []
-    ref_imgs_list = []
-    pe_shift_w, pe_shift_h = w // 2, h // 2
-    for ref_img in ref_imgs:
-        _, _, ref_h1, ref_w1 = ref_img.shape
-        ref_img = rearrange(ref_img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
-        if ref_img.shape[0] == 1 and bs > 1:
-            ref_img = repeat(ref_img, "1 ... -> bs ...", bs=bs)
-        ref_img_ids1 = torch.zeros(ref_h1 // 2, ref_w1 // 2, 3)
-        # img id分别在宽高偏移各自最大值
-        h_offset = pe_shift_h if pe in {'d', 'h'} else 0
-        w_offset = pe_shift_w if pe in {'d', 'w'} else 0
-        ref_img_ids1[..., 1] = ref_img_ids1[..., 1] + torch.arange(ref_h1 // 2)[:, None] + h_offset
-        ref_img_ids1[..., 2] = ref_img_ids1[..., 2] + torch.arange(ref_w1 // 2)[None, :] + w_offset
-        ref_img_ids1 = repeat(ref_img_ids1, "h w c -> b (h w) c", b=bs)
+    # 2. 참조 이미지 처리 및 ID 생성
+    ref_img_ids            = []              # 참조 이미지의 positional id 저장 리스트
+    ref_imgs_list          = []              # 패치화된 참조 이미지 저장 리스트
+    pe_shift_w, pe_shift_h = w // 2, h // 2  # 참조 이미지 id offset (겹침 방지)
+    #
+    for ref_img in ref_imgs:                 # 참조 이미지 순회
+        _, _, ref_h1, ref_w1 = ref_img.shape # 각 참조 이미지 shape 추출
+        ref_img = rearrange(ref_img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) # 2x2 패치 분해
+        if ref_img.shape[0] == 1 and bs > 1:                                               # 참조 이미지도 배치가 1인데 여러 개 필요하면
+            ref_img = repeat(ref_img, "1 ... -> bs ...", bs=bs)                            # 복제
+        ref_img_ids1 = torch.zeros(ref_h1 // 2, ref_w1 // 2, 3)                            # 참조 이미지 패치 id 초기화
+        
+        # img id 각각 row, col에 offset 부여 (겹치지 않게 위치 이동)
+        h_offset             = pe_shift_h if pe in {'d', 'h'} else 0                       # 높이 offset
+        w_offset             = pe_shift_w if pe in {'d', 'w'} else 0                       # 참조 이미지 패치 id 초기화
+        #
+        ref_img_ids1[..., 1] = ref_img_ids1[..., 1] + torch.arange(ref_h1 // 2)[:, None] + h_offset  # row id + offset
+        ref_img_ids1[..., 2] = ref_img_ids1[..., 2] + torch.arange(ref_w1 // 2)[None, :] + w_offset  # col id + offset
+        ref_img_ids1         = repeat(ref_img_ids1, "h w c -> b (h w) c", b=bs)                      # 배치로 복제
         ref_img_ids.append(ref_img_ids1)
         ref_imgs_list.append(ref_img)
 
-        # 更新pe shift
+        # pe shift - 다음 참조 이미지는 위치 offset을 누적 (겹치지 않게) >> offset 누적 (다음 참조이미지와 id 겹치지 않게)
         pe_shift_h += ref_h1 // 2
         pe_shift_w += ref_w1 // 2
 
-    if isinstance(prompt, str):
-        prompt = [prompt]
-    txt = t5(prompt)
-    if txt.shape[0] == 1 and bs > 1:
-        txt = repeat(txt, "1 ... -> bs ...", bs=bs)
-    txt_ids = torch.zeros(bs, txt.shape[1], 3)
+    if isinstance(prompt, str):                      # 프롬프트가 문자열이면 리스트로 변환
+        prompt = [prompt]        
+    txt = t5(prompt)                                 # t5 임베더로 텍스트 임베딩    
+    if txt.shape[0] == 1 and bs > 1:                 # 임베딩 배치가 1이고 실제 bs > 1이면 > 복제
+        txt = repeat(txt, "1 ... -> bs ...", bs=bs)  #     > 복제
+    txt_ids = torch.zeros(bs, txt.shape[1], 3)       # 텍스트 토큰별 positional id (dummy)
 
-    vec = clip(prompt)
-    if vec.shape[0] == 1 and bs > 1:
+    vec = clip(prompt)                               # clip 임베더로 텍스트 임베딩
+    if vec.shape[0] == 1 and bs > 1:                 # 배치가 1이고 실제 bs > 1이면 > 복제
         vec = repeat(vec, "1 ... -> bs ...", bs=bs)
 
     return {
-        "img": img,
-        "img_ids": img_ids.to(img.device),
-        "ref_img": tuple(ref_imgs_list),
-        "ref_img_ids": [ref_img_id.to(img.device) for ref_img_id in ref_img_ids],
-        "txt": txt.to(img.device),
-        "txt_ids": txt_ids.to(img.device),
-        "vec": vec.to(img.device),
+        "img": img,                                                               # (B, 패치수, 패치채널)
+        "img_ids": img_ids.to(img.device),                                        # 이미지 patch별 positional id
+        "ref_img": tuple(ref_imgs_list),                                          # 참조 이미지 패치화 결과
+        "ref_img_ids": [ref_img_id.to(img.device) for ref_img_id in ref_img_ids], # 참조 이미지 patch별 id
+        "txt": txt.to(img.device),                                                # t5 임베딩 결과 
+        "txt_ids": txt_ids.to(img.device),                                        # 텍스트 토큰별 positional id
+        "vec": vec.to(img.device),                                                # clip 임베딩 결과
     }
 
 
