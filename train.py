@@ -416,15 +416,15 @@ def main(
         with accelerator.accumulate(dit):
             # Predict the noise residual and compute loss
             model_pred = dit(
-                img=x_t.to(weight_dtype),
-                img_ids=inp['img_ids'].to(weight_dtype),
-                ref_img=[x.to(weight_dtype) for x in x_ref],
-                ref_img_ids=[ref_img_id.to(weight_dtype) for ref_img_id in inp['ref_img_ids']],
-                txt=inp['txt'].to(weight_dtype),
-                txt_ids=inp['txt_ids'].to(weight_dtype),
-                y=inp['vec'].to(weight_dtype),
-                timesteps=t.to(weight_dtype),
-                guidance=guidance_vec.to(weight_dtype)
+                img=x_t.to(weight_dtype),                                                       # 노이즈가 섞인 이미지 (배치, 패치, 채널) - weight_dtype(예: float16/bfloat16)로 타입 변환
+                img_ids=inp['img_ids'].to(weight_dtype),                                        # 각 이미지 패치의 positional embedding id, dtype 변환                                     
+                ref_img=[x.to(weight_dtype) for x in x_ref],                                    # 참조 이미지들(2x2 패치화된 것), dtype 변환
+                ref_img_ids=[ref_img_id.to(weight_dtype) for ref_img_id in inp['ref_img_ids']], # 참조 이미지 patch별 id, dtype 변환
+                txt=inp['txt'].to(weight_dtype),                                                # 텍스트 임베딩 (T5 등), dtype 변환
+                txt_ids=inp['txt_ids'].to(weight_dtype),                                        # 텍스트 토큰별 positional id, dtype 변환
+                y=inp['vec'].to(weight_dtype),                                                  # 텍스트 임베딩 (CLIP 등), dtype 변환
+                timesteps=t.to(weight_dtype),                                                   # diffusion 타임스텝 값, dtype 변환
+                guidance=guidance_vec.to(weight_dtype)                                          # guidance 벡터, dtype 변환           
             )
 
             loss = F.mse_loss(model_pred.float(), (x_0 - x_1).float(), reduction="mean")
