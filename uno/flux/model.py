@@ -177,6 +177,7 @@ class Flux(nn.Module):
         img = self.img_in(img) # (B, N_img_patch, hidden_size)    
         
         # timestep(scalar) → 256차원 임베딩 → hidden_size로 투영
+        #        → timestep_embedding() : 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
         vec = self.time_in(timestep_embedding(timesteps, 256)) # timestep_embedding(timesteps, 256): (B, 256) → time_in: (B, hidden_size)
         
         if self.params.guidance_embed:
