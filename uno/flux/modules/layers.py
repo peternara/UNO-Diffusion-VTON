@@ -221,9 +221,9 @@ class ModulationOut:
 class Modulation(nn.Module):
     def __init__(self, dim: int, double: bool):
         super().__init__()
-        self.is_double = double
+        self.is_double  = double
         self.multiplier = 6 if double else 3
-        self.lin = nn.Linear(dim, self.multiplier * dim, bias=True)
+        self.lin        = nn.Linear(dim, self.multiplier * dim, bias=True)
 
     def forward(self, vec: Tensor) -> tuple[ModulationOut, ModulationOut | None]:
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
@@ -279,6 +279,18 @@ class DoubleStreamBlockLoraProcessor(nn.Module):
 
 class DoubleStreamBlockProcessor:
     def __call__(self, attn, img, txt, vec, pe, **attention_kwargs):
+        # "이 vec를 modulation에 넣는 이유?" and "왜 Modulation을 해야 할까?"
+        #    → 이전 앞 부분에서 vec = vec + self.vector_in(y)
+        #        → vec : clip embedding
+        #        → y   : timestep embedding
+        #        → 추가적으로 class guidance 를 들어 갈수 있음 
+        #            → vec = vec + self.guidance_in(timestep_embedding(guidance, 256))
+        #    → “지금 어떤 조건(예: timestep=200, ‘cat’이라는 텍스트 등) 하에서 피처를 어떻게 바꿔야 하나?”를 모델이 바로 인식하도록 해야함.
+        #        → 예전 방식 : 그냥 조건을 concat하거나 add만 해줌
+        #    → Modulation
+        #        → 각 조건에 따라 피처의 “스케일, 위치, 정보 유입량”을 미세하게 바꿀 수 있음
+        #        → 즉, 모델이 condition을 "진짜 강하게" 인식할 수 있음
+        #        → 대표적인 예시: FiLM (Feature-wise Linear Modulation) 레이어
         img_mod1, img_mod2  = attn.img_mod(vec)
         txt_mod1, txt_mod2  = attn.txt_mod(vec)
 
