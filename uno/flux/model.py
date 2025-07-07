@@ -188,13 +188,19 @@ class Flux(nn.Module):
         # 이미지 입력: Linear(in_channels → hidden_size)
         img = self.img_in(img) # (B, N_img_patch, hidden_size)    
 
-        # * timestep embedding > 이해가 잘 안감?! > 이유는 "MM-DIT 논문 기반" 인지 몰랐기 때문, 당연히 SD기반인줄 알았음.
-        # 타임스텝(예: diffusion step) 임베딩 + 선형 레이어 통과
+        #--------------------------------------------------------------------------------------------
+        # 256-dimensional frequency embedding
+        #        → timestep embedding > 이해가 잘 안감?! > 이유는 "MM-DIT 논문 기반" 인지 몰랐기 때문, 당연히 SD기반인줄 알았음.
+        #        → 기본 개념 : conditional training을 진행할 때는 timestep뿐만 아니라 label 정보 y(중요-clip, cfg 포함)도 함께 이용
+        #        → 대상 : timestep+CLIP+CFG
+        #--------------------------------------------------------------------------------------------
+        #        
+        # timesteps 임베딩 : "Diffusion Models Beat GANs on Image Synthesis" 의 연구 기반
         # i) 타임스텝 임베딩은 모델이 "지금 어느 단계에 있는지"를 알 수 있도록 신호를 주는 과정.
         #        → 이 신호가 없으면, 모델은 어떤 단계에서 어떤 처리를 해야 하는지 몰라서 제대로 학습/추론 안됨 
         #        → 1000 step diffusion에서 ① 초반(노이즈 많음) ② 후반(노이즈 적음) 단계별로 모델이 "지금 어느 단계인지를 알아야" 제대로 이미지를 복원/생성
-        #        → 단순히 timestep=55 같은 정수 값을 모델에 주면, 딥러닝 네트워크가 이 숫자의 상대적인 위치/관계를 잘 이해하지 못함.
-        #        → 그래서 Embedding(예: sin, cos 기반 포지셔널 임베딩 또는 Learnable Embedding)으로 **숫자를 "의미 있는 벡터"**로 바꿔줍니다.
+        #        → 단순히, timestep=55 같은 정수 값을 모델에 주면, 딥러닝 네트워크가 이 숫자의 상대적인 위치/관계를 잘 이해하지 못함.
+        #        → 그래서, Embedding(예: sin, cos 기반 포지셔널 임베딩 또는 Learnable Embedding)으로 **숫자를 "의미 있는 벡터"**로 바꿔줍니다.
         # ii) timestep(scalar) → 256차원 임베딩 → hidden_size로 투영
         #        → timestep_embedding(timesteps, 256) : 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
         #            → timesteps (ex. 10, 50, 900 ...)를 256차원 벡터로 변환 (sin/cos 또는 learnable 등)
@@ -210,26 +216,23 @@ class Flux(nn.Module):
         #            → 둘 다
         #                → “정수(인덱스, 단계)” → “분산된 벡터 신호”로 변환
         #                → 주로 Sinusoidal 함수(sin, cos)나 학습 가능한 Embedding Layer 사용
+        # timesteps 임베딩 이후, 선형 레이어 통과 : 아래 time_in() > 2-ml layer = linear - silu - linear 
         vec = self.time_in(timestep_embedding(timesteps, 256)) # timestep_embedding(timesteps, 256): (B, 256) → time_in: (B, hidden_size)
-        
+
+        # 위에서 언급했듯이, CFG도 위와 동일하게 적용
         if self.params.guidance_embed:
             if guidance is None:
                 raise ValueError("Didn't get guidance strength for guidance distilled model.")
             # guidance 플래그가 있으면 guidance값도 임베딩해서 vec에 더함
             vec = vec + self.guidance_in(timestep_embedding(guidance, 256)) # timestep_embedding(guidance, 256): (B, 256) → guidance_in: (B, hidden_size)
 
-        # CLIP 등 condition 벡터도 임베딩해서 더함 
-        #        → 왜 여기서 vec를 더 하는 이유는? 
-        #            → 보통 SD의 condition은 cross-attention할대 이런식으로 더하지 않음
-        #            → 예측)
-        #                → condiation에 들어가는 것이 맞나? 아닐수도 있을거 같다.
+        # 위에서 언급했듯이, clip 도 위와 동일하게 적용
         vec = vec + self.vector_in(y) # vector_in(y): (B, hidden_size), broadcasting sum 
         
         # 텍스트 임베딩: Linear(context_in_dim → hidden_size)    
         txt = self.txt_in(txt)        # (B, N_txt, hidden_size)         
 
         # 텍스트 토큰 id와 이미지 패치 id를 시퀀스 차원에서 이어붙임
-        #        → paper 수식 4)
         ids = torch.cat((txt_ids, img_ids), dim=1) # txt_ids: (B, N_txt, pe_dim), img_ids: (B, N_img_patch, pe_dim) → (B, N_txt + N_img_patch, pe_dim)
 
         # concat ref_img/img
@@ -237,7 +240,6 @@ class Flux(nn.Module):
         if ref_img is not None:
             if isinstance(ref_img, tuple) or isinstance(ref_img, list):
                 # i) 여러 참조 이미지가 있을 때: 모두 임베딩 후 원본 img와 함께 concat
-                #        → paper 수식 5)
                 # img: (B, N_img_patch, hidden_size), 
                 # self.img_in(ref): (B, N_ref_patch_i, hidden_size)
                 img_in  = [img] + [self.img_in(ref) for ref in ref_img]
