@@ -176,12 +176,28 @@ class Flux(nn.Module):
         # 이미지 입력: Linear(in_channels → hidden_size)
         img = self.img_in(img) # (B, N_img_patch, hidden_size)    
 
-        # "현재 노이즈 단계(timestep)가 몇 번째인지" → 이를 신경망에서 쓸 수 있는 임베딩 벡터로 변환
-        #        → 모델에 "지금 얼마나 노이즈가 섞였는지" 알려주는 컨디션 벡터
-        #        → 네트워크의 조건(condition) 입력으로 들어감
-        #        → (ex: MLP/Linear를 통과해서 cross attention 등에서 사용)
-        # timestep(scalar) → 256차원 임베딩 → hidden_size로 투영
-        #        → timestep_embedding() : 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
+        # * timestep embedding > 이해가 잘 안감?!
+        # 타임스텝(예: diffusion step) 임베딩 + 선형 레이어 통과
+        # i) 타임스텝 임베딩은 모델이 "지금 어느 단계에 있는지"를 알 수 있도록 신호를 주는 과정.
+        #        → 이 신호가 없으면, 모델은 어떤 단계에서 어떤 처리를 해야 하는지 몰라서 제대로 학습/추론 안됨 
+        #        → 1000 step diffusion에서 ① 초반(노이즈 많음) ② 후반(노이즈 적음) 단계별로 모델이 "지금 어느 단계인지를 알아야" 제대로 이미지를 복원/생성
+        #        → 단순히 timestep=55 같은 정수 값을 모델에 주면, 딥러닝 네트워크가 이 숫자의 상대적인 위치/관계를 잘 이해하지 못함.
+        #        → 그래서 Embedding(예: sin, cos 기반 포지셔널 임베딩 또는 Learnable Embedding)으로 **숫자를 "의미 있는 벡터"**로 바꿔줍니다.
+        # ii) timestep(scalar) → 256차원 임베딩 → hidden_size로 투영
+        #        → timestep_embedding(timesteps, 256) : 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
+        #            → timesteps (ex. 10, 50, 900 ...)를 256차원 벡터로 변환 (sin/cos 또는 learnable 등)
+        #            → 이 벡터는 각 타임스텝별로 독특한 "위치 인식 신호"를 가짐
+        # iii) positional embedding과 비슷한 이유
+        #        → timestep embedding과 positional embedding은 “정수 인덱스(위치)”를 “벡터”로 변환한다는 점에서 거의 동일한 원리로 작동
+        #            → positional embedding 
+        #                → Transformer 등에서 “시퀀스 내 각 토큰의 위치” (예: 0, 1, 2, 3...) 를 벡터로 변환
+        #                → 모델이 "순서" 정보를 이해할 수 있도록 해줌
+        #            → timestep embedding:
+        #                → Diffusion 등에서 “현재 단계(스텝)” (예: 0, 1, ..., 999) 를 벡터로 변환
+        #                → 모델이 "지금 어느 단계인지" 알 수 있도록 해줌
+        #            → 둘 다
+        #                → “정수(인덱스, 단계)” → “분산된 벡터 신호”로 변환
+        #                → 주로 Sinusoidal 함수(sin, cos)나 학습 가능한 Embedding Layer 사용
         vec = self.time_in(timestep_embedding(timesteps, 256)) # timestep_embedding(timesteps, 256): (B, 256) → time_in: (B, hidden_size)
         
         if self.params.guidance_embed:
@@ -191,6 +207,10 @@ class Flux(nn.Module):
             vec = vec + self.guidance_in(timestep_embedding(guidance, 256)) # timestep_embedding(guidance, 256): (B, 256) → guidance_in: (B, hidden_size)
 
         # CLIP 등 condition 벡터도 임베딩해서 더함 
+        #        → 왜 여기서 vec를 더 하는 이유는? 
+        #            → 보통 SD의 condition은 cross-attention할대 이런식으로 더하지 않음
+        #            → 예측)
+        #                → condiation에 들어가는 것이 맞나? 아닐수도 있을거 같다.
         vec = vec + self.vector_in(y) # vector_in(y): (B, hidden_size), broadcasting sum 
         
         # 텍스트 임베딩: Linear(context_in_dim → hidden_size)    
