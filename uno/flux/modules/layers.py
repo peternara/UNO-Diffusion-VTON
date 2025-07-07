@@ -67,6 +67,7 @@ class EmbedND(nn.Module):
 #     → t가 0이면 첫 위치, t가 크면 점점 높은 주파수로 포지셔널 정보 제공
 #     → 이 임베딩은 네트워크에 timestep 정보를 넣을 때, 학습 가능한 임베딩 레이어 대신 사용
 # 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
+# https://github.com/facebookresearch/DiT/blob/main/models.py#L41
 # ----------------------------------------------------------------------------------------------
 def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 1000.0):
     """
