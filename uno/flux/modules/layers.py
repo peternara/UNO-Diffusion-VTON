@@ -210,15 +210,27 @@ class SelfAttention(nn.Module):
     def forward():
         pass
 
-#-----------------------------------------------------------------------------------
-# 역할:
-# 세 가지 modulation 파라미터를 담는 단순 데이터 구조입니다.
-# shift : 피처를 얼마나 이동(translation)
-# scale : 피처의 크기를 얼마나 조절
-# gate  : 피처에 얼마나 "gate"를 걸지 (곱해서 정보를 유입/차단)
+#---------------------------------------------------------------------------------------------------------------------------------
+# adaLN-Zero Block
+# 역할: → 세 가지 modulation 파라미터를 담는 단순 데이터 구조.    
+#     → shift : 피처를 얼마나 이동(translation)
+#     → scale : 피처의 크기를 얼마나 조절
+#     → gate  : 피처에 얼마나 "gate"를 걸지 (곱해서 정보를 유입/차단)
 #
-# 보통 "FiLM" 레이어와 유사하게, Condition(벡터)에 따라 feature를 affine transform하기 위함
-#-----------------------------------------------------------------------------------
+# what? adaLN-Zero Block
+#     → 보통 "FiLM" 레이어와 유사하게, Condition(벡터)에 따라 feature를 affine transform하기 위함
+#         → 이 연구에서 scale값은 앞에 나온 vector에 곱해주는 역할이고, shift는 더해주는 역할
+#         → 여기서, FiLM에서 나온 linear modulation 방법을 LN (layer normalization)에 적용한 형태가 바로 adaLN이라고 부르는 것
+#     → DiT에서 사용되는 adaLN의 경우에는 직접적으로 learnable하는 것이 아닌, timestep과 label의 embedding을 shift와 scale값으로 활용
+#     → adaLN은 각 2개의 shift와 scale factor가 필요했다. 즉 총 4개의 embedding vector가 MLP로 출력.
+#     → 그러나 adaLN-Zero는 scale factor a를 추가하여서 총 6개의 output이 나오도록 모델 구조를 설계.
+#     → 또한, 이 scale factor a의 초기값을 zero로 두고 시작하기 때문에, adaLN-Zero라고 부름.
+#         → a가 0이기 때문에 input_tokens 값만 살아남게 되므로, 논문에서 언급하는 것처럼, 처음 DiT block은 identity function.
+#         → DiT block 안에 있는 MLP들은 SiLU와 linear layer를 적용하는데, (아래, class Modulation(nn.Module) 참조)
+#             → adaLN 또는 adaLN-Zero인지에 따라서 output 차원이 달라진다. 
+#             → adaLN-Zero일 경우에는 transformer's hidden size의 6배에 해당하는 vector를 출력하게 된다.
+#         → Timesteps과 layer 정보에 대하여 embed로 들어오면 서로 dim-256 사이즈의 vector인데, 두 개의 vector를 더한 상태로 MLP의 입력에 해당.
+#---------------------------------------------------------------------------------------------------------------------------------
 @dataclass
 class ModulationOut:
     # modulation의 shift, scale, gate는
@@ -381,7 +393,8 @@ class DoubleStreamBlockProcessor:
         return img, txt
 
 # ----------------------------------------------------------------------------------------------------------------
-# 주의)
+# "Scalable Diffusion Models with Transformers" 의 MM-DIT 모델 기반
+# 주의) 그래서, 기존 SD의 구조와는 다름. 
 #    → FLUX 라이브러리는 CLIP을 condition으로 쓸 때, cross-attention을 사용하지 않고, 직접적인 modulation(injection) 구조
 #    → 실제 소스에서도 확인 → text, image concat 후, self-attention에 적용함
 # ----------------------------------------------------------------------------------------------------------------
