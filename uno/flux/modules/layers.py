@@ -352,7 +352,7 @@ class DoubleStreamBlockProcessor:
         # prepare image for attention
         img_modulated       = attn.img_norm1(img)
         img_modulated       = (1 + img_mod1.scale) * img_modulated + img_mod1.shift
-        img_qkv             = attn.img_attn.qkv(img_modulated)
+        img_qkv             = attn.img_attn.qkv(img_modulated) # qkv() 한 번에 projection → chunk로 Q, K, V 분리
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B H L D", K=3, H=attn.num_heads, D=attn.head_dim)
         img_q, img_k        = attn.img_attn.norm(img_q, img_k, img_v)
 
@@ -380,6 +380,11 @@ class DoubleStreamBlockProcessor:
         txt = txt + txt_mod2.gate * attn.txt_mlp((1 + txt_mod2.scale) * attn.txt_norm2(txt) + txt_mod2.shift)
         return img, txt
 
+# ----------------------------------------------------------------------------------------------------------------
+# 주의)
+#    → FLUX 라이브러리는 CLIP을 condition으로 쓸 때, cross-attention을 사용하지 않고, 직접적인 modulation(injection) 구조
+#    → 
+# ----------------------------------------------------------------------------------------------------------------
 class DoubleStreamBlock(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False):
         super().__init__()
