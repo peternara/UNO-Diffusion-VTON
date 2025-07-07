@@ -379,11 +379,12 @@ def main(
             #    → 텍스트 프롬프트를 두 임베더(t5, clip)로 임베딩
             #    → 이 모든 정보를 dict로 묶어 downstream 모델 입력으로 준비
             inp   = prepare_multi_ip(t5=t5, clip=clip, img=x_1, prompt=prompts, ref_imgs=tuple(x_ref), pe=args.pe)
-
-            # 의문) 아래 부분은 "prepare_multi_ip()" 함수안에서 동일한 패치화를 하는데 왜 여기서 또 하는가?
+            
             # 입력 이미지 (B, C, H, W) > (B, H//2 * W//2, C*2*2)
             #    → 이미지를 2x2 패치 단위로 분해하여, 각 패치를 하나의 벡터(길이 C*4)
             #    → 결과적으로 (배치, 패치 개수, 패치 채널)  
+            # 의문) 아래 부분은 "prepare_multi_ip()" 함수안에서 동일한 패치화를 하는데 왜 여기서 또 하는가?
+            #    → 실제, 아래 x_1와 동일한 inp['img']을 사용하지 않음.
             x_1   = rearrange(x_1, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)      
             # 참조 이미지 리스트(각각 (B, C, H, W) 형태)의 각 이미지를 위와 동일하게 2x2 패치 단위로 분해
             #    → 리스트 내 모든 참조 이미지를 (B, H//2 * W//2, C*2*2) 분해
