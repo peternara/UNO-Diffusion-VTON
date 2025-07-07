@@ -210,22 +210,77 @@ class SelfAttention(nn.Module):
     def forward():
         pass
 
-
+#-----------------------------------------------------------------------------------
+# 역할:
+# 세 가지 modulation 파라미터를 담는 단순 데이터 구조입니다.
+# shift : 피처를 얼마나 이동(translation)
+# scale : 피처의 크기를 얼마나 조절
+# gate  : 피처에 얼마나 "gate"를 걸지 (곱해서 정보를 유입/차단)
+#
+# 보통 "FiLM" 레이어와 유사하게, Condition(벡터)에 따라 feature를 affine transform하기 위함
+#-----------------------------------------------------------------------------------
 @dataclass
 class ModulationOut:
-    shift: Tensor
-    scale: Tensor
-    gate: Tensor
+    # modulation의 shift, scale, gate는
+    # (batch, 1, dim)
+    #     → 여기서 "1"은 sequence length가 아니라 broadcast를 위한 차원
 
+    # shift
+    #     → feature의 "위치"를 이동 (translation)
+    #     → LayerNorm, Residual 등에서 bias 역할
+    # 예시:
+    #     → x_mod = x + shift
+    shift: Tensor # (batch, 1, dim)
+    
+    # scale
+    #      → feature의 "크기"를 조절 (amplitude)
+    #      → 특정 조건에서 feature를 더 강조하거나, 축소할 수 있음
+    # 예시:
+    #      → x_mod = (1 + scale) * x
+    #          → (1 + scale)를 쓰는 이유: scale=0이면 "원래 피처 유지", scale>0이면 강조, <0이면 약화
+    scale: Tensor # (batch, 1, dim)
 
+    # gate
+    # 정보의 흐름 자체를 조절 (0~1, sigmoid/softplus 등)
+    # attention, MLP 등 여러 가지 결과값을 residual에 더할 때
+    # "이 조건에서 이 정보를 얼마나 반영할지"를 제어
+    # gate=1이면 다 반영, 0이면 차단
+    # 예시:
+    #       → x = x + gate * (attention_output)
+    #       → StyleGAN의 style strength, diffusion의 classifier-free guidance 등도 gate와 유사한 메커니즘
+    gate: Tensor  # (batch, 1, dim)
+
+#-----------------------------------------------------------------------------------
+# Condition 정보(vec)에 따라 "feature에 affine 변환(shift, scale)"
+# 정보의 양을 gate로 조절
+#     → 다양한 residual/MLP/attention 등 여러 블록에서 feature를 “조건에 맞게” 실시간으로 조정할 수 있도록 함
+#-----------------------------------------------------------------------------------
 class Modulation(nn.Module):
     def __init__(self, dim: int, double: bool):
         super().__init__()
         self.is_double  = double
-        self.multiplier = 6 if double else 3
-        self.lin        = nn.Linear(dim, self.multiplier * dim, bias=True)
+        self.multiplier = 6 if double else 3                               # double이면 shift/scale/gate 2세트, 아니면 1세트 → 곱할 개수 결정
+        #
+        # lin: condition 벡터를 shift/scale/gate 여러 개로 projection
+        # 예) double=True이면 Linear(512, 3072) (== 512 x 6)
+        self.lin        = nn.Linear(dim, self.multiplier * dim, bias=True) # 입력: (batch, dim) → 출력: (batch, multiplier*dim)
 
     def forward(self, vec: Tensor) -> tuple[ModulationOut, ModulationOut | None]:
+        #
+        # 1. SiLU 활성화: (batch, dim)
+        # 2. Linear 투사: (batch, multiplier*dim)
+        # 3. unsqueeze(1): (batch, 1, multiplier*dim)
+        # 4. chunk: multiplier개로 분리 → 각 (batch, 1, dim) → 여기서 "1"은 sequence length가 아니라 broadcast를 위한 차원
+        # 분해 설명
+        #    → nn.functional.silu(vec): (batch, dim) → (batch, dim)
+        #    → self.lin(...): (batch, dim) → (batch, multiplier*dim)
+        #        → multiplier=6 or 3
+        # [:, None, :]:
+        #    → (batch, multiplier*dim) → (batch, 1, multiplier*dim)
+        #    → broadcasting 용 (나중에 feature와 더할 때 시퀀스 차원과 맞추기 위해)
+        # .chunk(self.multiplier, dim=-1)
+        #    → (batch, 1, multiplier*dim) → multiplier개의 (batch, 1, dim) 텐서로 분해
+        #    → 예) [shift1, scale1, gate1, shift2, scale2, gate2]
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
 
         return (
