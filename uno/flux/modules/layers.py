@@ -279,22 +279,22 @@ class DoubleStreamBlockLoraProcessor(nn.Module):
 
 class DoubleStreamBlockProcessor:
     def __call__(self, attn, img, txt, vec, pe, **attention_kwargs):
-        img_mod1, img_mod2 = attn.img_mod(vec)
-        txt_mod1, txt_mod2 = attn.txt_mod(vec)
+        img_mod1, img_mod2  = attn.img_mod(vec)
+        txt_mod1, txt_mod2  = attn.txt_mod(vec)
 
         # prepare image for attention
-        img_modulated = attn.img_norm1(img)
-        img_modulated = (1 + img_mod1.scale) * img_modulated + img_mod1.shift
-        img_qkv = attn.img_attn.qkv(img_modulated)
+        img_modulated       = attn.img_norm1(img)
+        img_modulated       = (1 + img_mod1.scale) * img_modulated + img_mod1.shift
+        img_qkv             = attn.img_attn.qkv(img_modulated)
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B H L D", K=3, H=attn.num_heads, D=attn.head_dim)
-        img_q, img_k = attn.img_attn.norm(img_q, img_k, img_v)
+        img_q, img_k        = attn.img_attn.norm(img_q, img_k, img_v)
 
         # prepare txt for attention
-        txt_modulated = attn.txt_norm1(txt)
-        txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
-        txt_qkv = attn.txt_attn.qkv(txt_modulated)
+        txt_modulated       = attn.txt_norm1(txt)
+        txt_modulated       = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
+        txt_qkv             = attn.txt_attn.qkv(txt_modulated)
         txt_q, txt_k, txt_v = rearrange(txt_qkv, "B L (K H D) -> K B H L D", K=3, H=attn.num_heads, D=attn.head_dim)
-        txt_q, txt_k = attn.txt_attn.norm(txt_q, txt_k, txt_v)
+        txt_q, txt_k        = attn.txt_attn.norm(txt_q, txt_k, txt_v)
 
         # run actual attention
         q = torch.cat((txt_q, img_q), dim=2)
