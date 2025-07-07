@@ -132,9 +132,8 @@ def prepare_multi_ip(
     if bs == 1 and not isinstance(prompt, str):
         bs = len(prompt)
 
-    # 1. 입력 이미지 처리 및 ID 생성
-    # 이미지를 2x2 patch 단위로 분해 → shape: (B, H//2 * W//2, C22)
-    img = rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
+    # 1. 입력 이미지 Patchify 처리 & ID 생성    
+    img = rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) # 이미지를 2x2 patch 단위로 분해 → shape: (B, H//2 * W//2, C22)
     if img.shape[0] == 1 and bs > 1: # 이미지 배치가 1이고 실제 배치가 여러개면
         # 만약 배치가 1이고, bs > 1이면 이미지를 bs개로 복제
         img = repeat(img, "1 ... -> bs ...", bs=bs)
