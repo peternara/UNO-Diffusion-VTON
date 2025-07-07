@@ -362,17 +362,25 @@ def main(
         img = batch["img"]
         ref_imgs = batch["ref_imgs"]
 
+
+        #--------------------------------------------------------------------------------------------
+        # 이 코드를 이해하기 위해, 다음 연구 기반임을 인식
+        #        → 즉, Flux는 "Scalable Diffusion Models with Transformers" 의 MM-DIT 논문 기반
+        #            → 이 paper의 Fig.3을 이해야함.
+        #            → 기존 SD 버전의 구조, 특히, cross-attention 적용하는 구조가 아님!!
+        #--------------------------------------------------------------------------------------------
         with torch.no_grad():
             x_1   = vae.encode(img.to(accelerator.device).to(torch.float32))
             x_ref = [vae.encode(ref_img.to(accelerator.device).to(torch.float32)) for ref_img in ref_imgs]
 
-            # What?
+            # 이미지 Patchify
             #    → 메인 이미지와 참조 이미지들(ref_imgs)을 patch 단위로 분해
             #    → 각 이미지 patch에 고유한 positional embedding ID(img_ids, ref_img_ids) 생성
             #    → 텍스트 프롬프트를 두 임베더(t5, clip)로 임베딩
             #    → 이 모든 정보를 dict로 묶어 downstream 모델 입력으로 준비
             inp   = prepare_multi_ip(t5=t5, clip=clip, img=x_1, prompt=prompts, ref_imgs=tuple(x_ref), pe=args.pe)
 
+            # 의문) 아래 부분은 "prepare_multi_ip()" 함수안에서 동일한 패치화를 하는데 왜 여기서 또 하는가?
             # 입력 이미지 (B, C, H, W) > (B, H//2 * W//2, C*2*2)
             #    → 이미지를 2x2 패치 단위로 분해하여, 각 패치를 하나의 벡터(길이 C*4)
             #    → 결과적으로 (배치, 패치 개수, 패치 채널)  
