@@ -59,13 +59,15 @@ class EmbedND(nn.Module):
     
         return emb.unsqueeze(1)
 
-# ---------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------
+# 256-dimensional frequency embedding : "Diffusion Models Beat GANs on Image Synthesis" 연구 기반
+#     → MM-DIT논문에 인용되어 있지만, 인용된 논문안에 이 내용이 존재하는건가? 
 # Diffusion/Transformer에서 사용되는 sinusoidal positional encoding (위치 임베딩)
 #     → 각 배치별 timestep(노이즈 단계)을 고유한 벡터로 변환
 #     → t가 0이면 첫 위치, t가 크면 점점 높은 주파수로 포지셔널 정보 제공
 #     → 이 임베딩은 네트워크에 timestep 정보를 넣을 때, 학습 가능한 임베딩 레이어 대신 사용
 # 각 배치별 timestep(예: 노이즈 단계)을, sin/cos으로 만든 고유 벡터(임베딩)로 바꿔주는 함수!
-# ---------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------
 def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 1000.0):
     """
     Create sinusoidal timestep embeddings.
