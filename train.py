@@ -397,6 +397,7 @@ def main(
             # diffusion 네트워크의 입력이 되는 x_t와, 각종 conditioning 정보를 준비
             bs           = img.shape[0]
 
+            # Add noise at image
             # (0~999) 사이에서 배치별로 무작위 타임스텝(timestep) 인덱스를 생성.
             #    → 즉, 각 이미지가 'diffusion 과정 중 몇 번째 단계'에 해당할지 랜덤하게 결정.
             #    → Diffusion 모델에서는 다양한 타임스텝을 골고루 학습시키기 위해 랜덤 추출.
@@ -410,12 +411,13 @@ def main(
             #    → Diffusion 모델의 핵심은 노이즈를 추가하거나 제거하는 것이므로, 노이즈 샘플이 필요.
             x_0          = torch.randn_like(x_1, device=accelerator.device)
             # x_1(원본)과 x_0(노이즈)를 타임스텝 비율만큼 섞어서 x_t를 생성하는 역할.
-            #    → t=0이면 x_t는 x_1(원본 이미지)
-            #    → t=1이면 x_t는 x_0(완전 노이즈)
+            #    → t=0이면, x_t는 x_1(원본 이미지)
+            #    → t=1이면, x_t는 x_0(완전 노이즈)
             #    → 그 사이 값이면 점진적으로 노이즈가 섞인 이미지
             #    → 즉, diffusion training에서 '특정 단계의 noisy image'를 시뮬레이션.
             #    → 이 x_t를 네트워크에 입력해서, 원본(x_1)이나 노이즈(x_0)를 예측하게 만듭니다.
             x_t          = (1 - t[:, None, None]) * x_1 + t[:, None, None] * x_0
+            
             # guidance_vec는 모두 1로 채워진 벡터(배치 크기만큼).
             #    → diffusion 모델에서 '조건부 샘플링'(예: classifier-free guidance) 할 때
             #        → "1"이면 conditioning을 적용하라는 신호.
