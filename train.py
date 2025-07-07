@@ -373,7 +373,7 @@ def main(
             x_1   = vae.encode(img.to(accelerator.device).to(torch.float32))
             x_ref = [vae.encode(ref_img.to(accelerator.device).to(torch.float32)) for ref_img in ref_imgs]
 
-            # 이미지 Patchify
+            # 이미지 Patchify & IDs
             #    → 메인 이미지와 참조 이미지들(ref_imgs)을 patch 단위로 분해
             #    → 각 이미지 patch에 고유한 positional embedding ID(img_ids, ref_img_ids) 생성
             #    → 텍스트 프롬프트를 두 임베더(t5, clip)로 임베딩
