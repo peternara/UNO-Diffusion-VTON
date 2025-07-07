@@ -316,33 +316,34 @@ class DoubleStreamBlockProcessor:
 class DoubleStreamBlock(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False):
         super().__init__()
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        self.num_heads = num_heads
+        mlp_hidden_dim   = int(hidden_size * mlp_ratio)
+        self.num_heads   = num_heads
         self.hidden_size = hidden_size
-        self.head_dim = hidden_size // num_heads
+        self.head_dim    = hidden_size // num_heads
 
-        self.img_mod = Modulation(hidden_size, double=True)
-        self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.img_attn = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias)
+        self.img_mod     = Modulation(hidden_size, double=True)
+        self.img_norm1   = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.img_attn    = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias)
 
-        self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.img_mlp = nn.Sequential(
-            nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
-            nn.GELU(approximate="tanh"),
-            nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
-        )
+        self.img_norm2   = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.img_mlp     = nn.Sequential(
+                nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
+                nn.GELU(approximate="tanh"),
+                nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
+            )
 
-        self.txt_mod = Modulation(hidden_size, double=True)
-        self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.txt_attn = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias)
+        self.txt_mod     = Modulation(hidden_size, double=True)
+        self.txt_norm1   = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.txt_attn    = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias)
 
-        self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.txt_mlp = nn.Sequential(
-            nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
-            nn.GELU(approximate="tanh"),
-            nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
-        )
-        processor = DoubleStreamBlockProcessor()
+        self.txt_norm2   = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.txt_mlp     = nn.Sequential(
+                nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
+                nn.GELU(approximate="tanh"),
+                nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
+            )
+        
+        processor         = DoubleStreamBlockProcessor()
         self.set_processor(processor)
 
     def set_processor(self, processor) -> None:
