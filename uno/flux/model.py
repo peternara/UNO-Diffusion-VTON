@@ -171,16 +171,24 @@ class Flux(nn.Module):
         ref_img: Tensor | None = None,      # (B, N_patch, in_channels)   : 참조 이미지
         ref_img_ids: Tensor | None = None,  # (B, N_patch, pe_dim)        : 참조 이미지 positional id
     ) -> Tensor:
+
+        #--------------------------------------------------------------------------------------------
+        # 이 코드를 이해하기 위해, 다음 연구 기반임을 인식
+        #        → 즉, Flux는 "Scalable Diffusion Models with Transformers" 의 MM-DIT 논문 기반
+        #            → 이 paper의 Fig.3을 이해야함.
+        #            → 기존 SD 버전의 구조, 특히, cross-attention 적용하는 구조가 아님!!
+        #--------------------------------------------------------------------------------------------
         
         # 입력 이미지, 텍스트 shape 체크
         if img.ndim != 3 or txt.ndim != 3:
             raise ValueError("Input img and txt tensors must have 3 dimensions.")
 
         # running on sequences img
+        # Patchify 화에 대한 embedding
         # 이미지 입력: Linear(in_channels → hidden_size)
         img = self.img_in(img) # (B, N_img_patch, hidden_size)    
 
-        # * timestep embedding > 이해가 잘 안감?!
+        # * timestep embedding > 이해가 잘 안감?! > 이유는 "MM-DIT 논문 기반" 인지 몰랐기 때문, 당연히 SD기반인줄 알았음.
         # 타임스텝(예: diffusion step) 임베딩 + 선형 레이어 통과
         # i) 타임스텝 임베딩은 모델이 "지금 어느 단계에 있는지"를 알 수 있도록 신호를 주는 과정.
         #        → 이 신호가 없으면, 모델은 어떤 단계에서 어떤 처리를 해야 하는지 몰라서 제대로 학습/추론 안됨 
