@@ -36,7 +36,11 @@ class FluxParams:
     qkv_bias: bool
     guidance_embed: bool
 
-
+#--------------------------------------------------------------------------------------------
+# Flux : "Scalable Diffusion Models with Transformers" 의 MM-DIT 논문 기반.
+#        → 이 paper의 Fig.3을 이해야함.
+#        → 기존 SD 버전의 구조, 특히, cross-attention 적용하는 구조가 아님!!
+#--------------------------------------------------------------------------------------------
 class Flux(nn.Module):
     """
     Transformer model for flow matching on sequences.
