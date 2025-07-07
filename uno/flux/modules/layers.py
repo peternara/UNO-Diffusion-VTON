@@ -383,7 +383,7 @@ class DoubleStreamBlockProcessor:
 # ----------------------------------------------------------------------------------------------------------------
 # 주의)
 #    → FLUX 라이브러리는 CLIP을 condition으로 쓸 때, cross-attention을 사용하지 않고, 직접적인 modulation(injection) 구조
-#    → 
+#    → 실제 소스에서도 확인 → text, image concat 후, self-attention에 적용함
 # ----------------------------------------------------------------------------------------------------------------
 class DoubleStreamBlock(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False):
