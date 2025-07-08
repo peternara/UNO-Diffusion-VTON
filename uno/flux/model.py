@@ -235,7 +235,12 @@ class Flux(nn.Module):
         # 텍스트 토큰 id와 이미지 패치 id를 시퀀스 차원에서 이어붙임
         ids = torch.cat((txt_ids, img_ids), dim=1) # txt_ids: (B, N_txt, pe_dim), img_ids: (B, N_img_patch, pe_dim) → (B, N_txt + N_img_patch, pe_dim)
 
+        # ---------------------------------------------------------------------------
+        # 원본 클래스와 다른점 - 여러개의 ref 입력을 받을수 있는 형태
         # concat ref_img/img
+        #        → concat ref img 
+        #        → concat ref img id
+        # ---------------------------------------------------------------------------
         img_end = img.shape[1] # 원본 img 패치 길이 저장
         if ref_img is not None:
             if isinstance(ref_img, tuple) or isinstance(ref_img, list):
