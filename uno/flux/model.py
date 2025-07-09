@@ -269,6 +269,13 @@ class Flux(nn.Module):
         
         for index_block, block in enumerate(self.double_blocks):
             if self.training and self.gradient_checkpointing: # 메모리 절약을 위한 gradient checkpointing
+                # 메모리 효율을 위해 중간 연산 결과(activation)을 저장하지 않고, 역전파(backward) 때만 "필요한 부분"을 다시 계산하는 기술.
+                #    → 즉, forward 시에는 메모리 절약
+                #    → 대신, backward 때 forward를 한 번 더 재실행(계산량↑, 메모리↓) > 속도는 느려질 수 있음
+                #    → checkpoint를 쓰면 "메모리 절약"을 위해 중간 결과를 저장하지 않고 나중에 다시 계산한다는 점
+                #    → 딥러닝 모델이 클수록(특히 transformer류, diffusion류, attention 구조) GPU 메모리 부족이 자주 발생.
+                #        → 중간 activations(블록별 입력값)을 다 저장하지 않으면
+                #        → 메모리 사용량을 획기적으로 줄일 수 있음
                 img, txt = torch.utils.checkpoint.checkpoint(
                     block,
                     img=img,             # (B, N_total_img, hidden_size)
