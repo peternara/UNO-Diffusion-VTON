@@ -292,12 +292,12 @@ class Modulation(nn.Module):
         #    → nn.functional.silu(vec): (batch, dim) → (batch, dim)
         #    → self.lin(...): (batch, dim) → (batch, multiplier*dim)
         #        → multiplier=6 or 3
-        # [:, None, :]:
-        #    → (batch, multiplier*dim) → (batch, 1, multiplier*dim)
-        #    → broadcasting 용 (나중에 feature와 더할 때 시퀀스 차원과 맞추기 위해)
-        # .chunk(self.multiplier, dim=-1)
-        #    → (batch, 1, multiplier*dim) → multiplier개의 (batch, 1, dim) 텐서로 분해
-        #    → 예) [shift1, scale1, gate1, shift2, scale2, gate2]
+        #    → [:, None, :]:
+        #        → (batch, multiplier*dim) → (batch, 1, multiplier*dim)
+        #        → broadcasting 용 (나중에 feature와 더할 때 시퀀스 차원과 맞추기 위해)
+        #    → .chunk(self.multiplier, dim=-1)
+        #        → (batch, 1, multiplier*dim) → multiplier개의 (batch, 1, dim) 텐서로 분해
+        #        → 예) [shift1, scale1, gate1, shift2, scale2, gate2]
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
 
         return (
