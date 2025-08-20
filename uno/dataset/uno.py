@@ -107,12 +107,22 @@ class FluxPairedDatasetV2(Dataset):
         n_ref = len(ref_imgs[0])
 
         img = bucket_images(img, self.resolution)
+
+        # ref_imgs =[
+        #      [ref11, ref12, ref13],   # 샘플1
+        #      [ref21, ref22, ref23],   # 샘플2
+        #  ]
         ref_imgs_new = []
         for i in range(n_ref):
+            # 주의) 아래 소스는 같은 줄이 아니라 열 단위 처리 
+            #     i=0 → [ref11, ref21] ← 각 샘플의 첫 번째 참조
+            #     i=1 → [ref12, ref22] ← 각 샘플의 두 번째 참조
+            #     i=2 → [ref13, ref23] ← 각 샘플의 세 번째 참조
             ref_imgs_i = [refs[i] for refs in ref_imgs]
+            #
             ref_imgs_i = bucket_images(ref_imgs_i, self.resolution_ref)
             ref_imgs_new.append(ref_imgs_i)
-
+            
         return {
             "txt": txt,
             "img": img,
