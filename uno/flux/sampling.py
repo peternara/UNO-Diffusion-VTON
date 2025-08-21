@@ -139,10 +139,41 @@ def prepare_multi_ip(
         img = repeat(img, "1 ... -> bs ...", bs=bs)
 
     # 메인 이미지 patch별 positional embedding ID 생성
+
+    # [
+    #    [[0,0,0], [0,0,0]],
+    #    [[0,0,0], [0,0,0]]
+    # ]
     img_ids         = torch.zeros(h // 2, w // 2, 3)                  # 패치별 positional embedding id 초기화 (H/2, W/2, 3)
+
     # row, col에 각 patch의 좌표를 기록
+    # 아래 두 코드 실행의 의미
+    #     img_ids[..., 0] : 아직 비어 있음 (보통 다른 정보 넣으려고 비워둔 자리)
+    #     img_ids[..., 1] : row index (세로 위치)
+    #     img_ids[..., 2] : col index (가로 위치)
+    #
+    # 아래 소스에서, 
+    #    > torch.arange(h // 2)[:, None] # shape (2,1)
+    #        > = [[0],
+    #             [1]]
+    #    > img_ids[..., 1] 에 더하면, broadcasting 에 의해, 2번째 열에(row) [0], [1]이 들어감
+    # [
+    #    [[0,0,0], [0,0,0]],
+    #    [[0,1,0], [0,1,0]]
+    # ]
     img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None] # 두 번째 축에 row 인덱스 할당
+
+    # 아래 소스에서, 
+    #    > torch.arange(w // 2)[None, :]  # shape (1,2)
+    #       > = [[0,1]] 
+    #    > → broadcasting으로 col 인덱스가 [...,2]에 들어감 
+    # [
+    #    [[0,0,1], [0,0,1]],
+    #    [[0,1,1], [0,1,1]]
+    # ]
     img_ids[..., 2] = img_ids[..., 2] + torch.arange(w // 2)[None, :] # 세 번째 축에 col 인덱스 할당
+
+    #
     img_ids         = repeat(img_ids, "h w c -> b (h w) c", b=bs)     # shape을 (B, H/2*W/2(패치수), 3)으로 복제
 
     # 2. 참조 이미지 처리 및 ID 생성
