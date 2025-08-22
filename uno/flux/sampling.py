@@ -147,30 +147,33 @@ def prepare_multi_ip(
     img_ids         = torch.zeros(h // 2, w // 2, 3)                  # 패치별 positional embedding id 초기화 (H/2, W/2, 3)
 
     # row, col에 각 patch의 좌표를 기록
-    # 아래 두 코드 실행의 의미
-    #     img_ids[..., 0] : 아직 비어 있음 (보통 다른 정보 넣으려고 비워둔 자리)
-    #     img_ids[..., 1] : row index (세로 위치)
-    #     img_ids[..., 2] : col index (가로 위치)
-    #
+    # 아래 두 코드 실행의 의미 
+    #     img_ids[..., 0] → shape (2,2), 각 위치에서 [0, ?, ?] 중 첫 번째 값만 꺼냄 → 지금은 비워둔 자리(0), 나중에 클래스 id 등 넣을 수 있음
+    #     img_ids[..., 1] → shape (2,2), 각 위치에서 [?, 0, ?] 중 두 번째 값만 꺼냄 → row(세로 인덱스) == img_ids[:, :, 1]
+    #     img_ids[..., 2] → shape (2,2), 각 위치에서 [?, ?, 0] 중 세 번째 값만 꺼냄 → col(가로 인덱스) == img_ids[:, :, 2]
+    #        : 위는 모두 마지막 3 dimension(channel)이 대상임을..
     # 아래 소스에서, 
-    #    > torch.arange(h // 2)[:, None] # shape (2,1)
-    #        > = [[0],
-    #             [1]]
-    #    > img_ids[..., 1] 에 더하면, broadcasting 에 의해, 2번째 열에(row) [0], [1]이 들어감
-    # [
-    #    [[0,0,0], [0,0,0]],
-    #    [[0,1,0], [0,1,0]]
-    # ]
+    #    → torch.arange(h//2) # shape (3,)
+    #        → [0, 1, 2] 
+    #    → torch.arange(h // 2)[:, None] # shape (3,) → shape (3,1) 
+    #        → [[0],
+    #           [1],
+    #           [2]]
+    #    → img_ids[..., 1] 에 더하면, 이것을 (3, 3) 모양의 img_ids[...,1]에 대입하면 브로드캐스팅으로 각 열에 복제 → 세로(row) 0,1,2 채우기
+    #        → [[0, 0, 0],
+    #           [1, 1, 1],
+    #           [2, 2, 2]]
     img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None] # 두 번째 축에 row 인덱스 할당
 
     # 아래 소스에서, 
-    #    > torch.arange(w // 2)[None, :]  # shape (1,2)
-    #       > = [[0,1]] 
-    #    > → broadcasting으로 col 인덱스가 [...,2]에 들어감 
-    # [
-    #    [[0,0,0], [0,0,1]],
-    #    [[0,1,0], [0,1,1]]
-    # ]
+    #    → torch.arange(h//2) # shape (3,)
+    #        → [0, 1, 2] 
+    #    → torch.arange(w // 2)[None, :] # shape (3,) → shape (1, 3) 
+    #        → [[0, 1, 2]]
+    #    → img_ids[..., 2]에 더하면, 이것을 (3, 3) 모양의 img_ids[...,2]에 대입하면 브로드캐스팅으로 각 행에 복제
+    #        → [[0, 1, 2],
+    #           [0, 1, 2],
+    #           [0, 1, 2]]
     img_ids[..., 2] = img_ids[..., 2] + torch.arange(w // 2)[None, :] # 세 번째 축에 col 인덱스 할당
 
     #
