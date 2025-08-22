@@ -140,10 +140,12 @@ def prepare_multi_ip(
 
     # 메인 이미지 patch별 positional embedding ID 생성
 
+    # img_ids = zeros(3,3,3) 라면, 
     # [
-    #    [[0,0,0], [0,0,0]],
-    #    [[0,0,0], [0,0,0]]
-    # ]
+    #    [[0,0,0], [0,0,0], [0,0,0]],
+    #    [[0,0,0], [0,0,0], [0,0,0]],
+    #    [[0,0,0], [0,0,0], [0,0,0]],
+    # ] 
     img_ids         = torch.zeros(h // 2, w // 2, 3)                  # 패치별 positional embedding id 초기화 (H/2, W/2, 3)
 
     # row, col에 각 patch의 좌표를 기록
@@ -152,31 +154,32 @@ def prepare_multi_ip(
     #     img_ids[..., 1] → shape (2,2), 각 위치에서 [?, 0, ?] 중 두 번째 값만 꺼냄 → row(세로 인덱스) == img_ids[:, :, 1]
     #     img_ids[..., 2] → shape (2,2), 각 위치에서 [?, ?, 0] 중 세 번째 값만 꺼냄 → col(가로 인덱스) == img_ids[:, :, 2]
     #        : 위는 모두 마지막 3 dimension(channel)이 대상임을..
-    # 아래 소스에서, 
-    #    → torch.arange(h//2) # shape (3,)
-    #        → [0, 1, 2] 
-    #    → torch.arange(h // 2)[:, None] # shape (3,) → shape (3,1) 
-    #        → [[0],
-    #           [1],
-    #           [2]]
-    #    → img_ids[..., 1] 에 더하면, 이것을 (3, 3) 모양의 img_ids[...,1]에 대입하면 브로드캐스팅으로 각 열에 복제 → 세로(row) 0,1,2 채우기
-    #        → [[0, 0, 0],
-    #           [1, 1, 1],
-    #           [2, 2, 2]]
+    # 아래 소스에서, row (세로) 채우기가 목적 & slot 1 에만
+    #      → torch.arange(h // 2)[:, None] → 위의 예 이어서보면, → img_ids[..., 1] = arange(3)[:, None]   
+    #      → [[0],[1],[2]] 
+    #      → 브로드캐스트로 (3,3)
+    #      → 오직 slot=1([..., 1]) 만 바뀜 → 아래 예제 참고 
+    #      → [
+    #          [[0,0,0], [0,0,0], [0,0,0]],
+    #          [[0,1,0], [0,1,0], [0,1,0]],
+    #          [[0,2,0], [0,2,0], [0,2,0]],
+    #         ]
     img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None] # 두 번째 축에 row 인덱스 할당
 
-    # 아래 소스에서, 
+    # 아래 소스에서, col(가로) 채우기가 목적 & slot 2에만 
     #    → torch.arange(h//2) # shape (3,)
     #        → [0, 1, 2] 
     #    → torch.arange(w // 2)[None, :] # shape (3,) → shape (1, 3) 
     #        → [[0, 1, 2]]
-    #    → img_ids[..., 2]에 더하면, 이것을 (3, 3) 모양의 img_ids[...,2]에 대입하면 브로드캐스팅으로 각 행에 복제
-    #        → [[0, 1, 2],
-    #           [0, 1, 2],
-    #           [0, 1, 2]]
+    #    → 오직 slot=2([..., 2]) 만 바뀜 → 아래 예제 참고  아래 결과는 위의 img_ids[..., 1]를 실행한 결과에서 slot=2를 채운 결과이다.
+    #    → [
+    #         [[0,0,0], [0,0,1], [0,0,2]],
+    #         [[0,1,0], [0,1,1], [0,1,2]],
+    #         [[0,2,0], [0,2,1], [0,2,2]],
+    #     ] 
     img_ids[..., 2] = img_ids[..., 2] + torch.arange(w // 2)[None, :] # 세 번째 축에 col 인덱스 할당
 
-    #
+    # 
     img_ids         = repeat(img_ids, "h w c -> b (h w) c", b=bs)     # shape을 (B, H/2*W/2(패치수), 3)으로 복제
 
     # 2. 참조 이미지 처리 및 ID 생성
@@ -194,7 +197,10 @@ def prepare_multi_ip(
         # img id 각각 row, col에 offset 부여 (겹치지 않게 위치 이동)
         h_offset             = pe_shift_h if pe in {'d', 'h'} else 0                       # 높이 offset
         w_offset             = pe_shift_w if pe in {'d', 'w'} else 0                       # 참조 이미지 패치 id 초기화
-        #
+        
+        # 예)
+        #    → 위의, h_offset = w_offset = 2 라면,
+        #    
         ref_img_ids1[..., 1] = ref_img_ids1[..., 1] + torch.arange(ref_h1 // 2)[:, None] + h_offset  # row id + offset
         ref_img_ids1[..., 2] = ref_img_ids1[..., 2] + torch.arange(ref_w1 // 2)[None, :] + w_offset  # col id + offset
         ref_img_ids1         = repeat(ref_img_ids1, "h w c -> b (h w) c", b=bs)                      # 배치로 복제
