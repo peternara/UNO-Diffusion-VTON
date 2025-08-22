@@ -60,6 +60,8 @@ class EmbedND(nn.Module):
         return emb.unsqueeze(1)
 
 # ----------------------------------------------------------------------------------------------
+# * 원래 소스 와 동일 - 수정하지 않았음 - No-Custom
+#
 # 256-dimensional frequency embedding : "Diffusion Models Beat GANs on Image Synthesis" 연구 기반
 #     → MM-DIT논문에 인용되어 있지만, 인용된 논문안에 이 내용이 존재하는건가? 
 # Diffusion/Transformer에서 사용되는 sinusoidal positional encoding (위치 임베딩)
