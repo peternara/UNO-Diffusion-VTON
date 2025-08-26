@@ -221,6 +221,8 @@ def prepare_multi_ip(
     vec = clip(prompt)                               # clip 임베더로 텍스트 임베딩
     if vec.shape[0] == 1 and bs > 1:                 # 배치가 1이고 실제 bs > 1이면 > 복제
         vec = repeat(vec, "1 ... -> bs ...", bs=bs)
+        
+    # 의문) t5의 경우에는 txt_ids 계산 했는데, clip(vec)dml 경우는 하지 않았다.
 
     return {
         "img": img,                                                               # (B, 패치수, 패치채널)          # [16, 1008, 64]
