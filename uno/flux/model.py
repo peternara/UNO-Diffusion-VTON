@@ -163,10 +163,10 @@ class Flux(nn.Module):
         self,
         img: Tensor,                        # (B, N_patch, in_channels)   : 입력 이미지 패치 벡터
         img_ids: Tensor,                    # (B, N_patch, pe_dim)        : 이미지 patch별 positional id
-        txt: Tensor,                        # (B, N_token, context_in_dim): 텍스트 임베딩
-        txt_ids: Tensor,                    # (B, N_token, pe_dim)        : 텍스트 토큰 positional id
+        txt: Tensor,                        # (B, N_token, context_in_dim): t5 텍스트 임베딩
+        txt_ids: Tensor,                    # (B, N_token, pe_dim)        : t5 텍스트 토큰 positional id
         timesteps: Tensor,                  # (B,)                        : diffusion timestep 값
-        y: Tensor,                          # (B, vec_in_dim)             : 텍스트 임베딩 등 condition 벡터
+        y: Tensor,                          # (B, vec_in_dim)             : clip 텍스트 임베딩 등 condition 벡터
         guidance: Tensor | None = None,     # (B,)                        : guidance strength 값
         ref_img: Tensor | None = None,      # (B, N_patch, in_channels)   : 참조 이미지
         ref_img_ids: Tensor | None = None,  # (B, N_patch, pe_dim)        : 참조 이미지 positional id
