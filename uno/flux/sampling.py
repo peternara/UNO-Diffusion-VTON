@@ -229,9 +229,9 @@ def prepare_multi_ip(
         "img_ids": img_ids.to(img.device),                                        # 이미지 patch별 positional id  # [16, 1008, 3]
         "ref_img": tuple(ref_imgs_list),                                          # 참조 이미지 패치화 결과          # [16, 1008, 64] < inp['ref_img'][0]
         "ref_img_ids": [ref_img_id.to(img.device) for ref_img_id in ref_img_ids], # 참조 이미지 patch별 id         # [16, 1008, 3]  < inp['ref_img_ids'][0]
-        "txt": txt.to(img.device),                                                # t5 임베딩 결과                 # [16,768]
+        "txt": txt.to(img.device),                                                # t5 임베딩 결과                 # [16, 512, 4096]
         "txt_ids": txt_ids.to(img.device),                                        # 텍스트 토큰별 positional id    #  [16, 768, 3]
-        "vec": vec.to(img.device),                                                # clip 임베딩 결과               # [16, 512, 4096]
+        "vec": vec.to(img.device),                                                # clip 임베딩 결과               # [16, 768]
     }
 
 
